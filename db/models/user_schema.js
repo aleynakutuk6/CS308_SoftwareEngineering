@@ -15,7 +15,7 @@ const UserSchema  = new mongoose.Schema({
 } ,
   userrole :{
     type  : String,
-    required : true
+    default : "Customer"
 } ,
   gender :{
     type  : String,

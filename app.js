@@ -6,6 +6,8 @@ const UserObj = require("./db/models/user_schema");
 const ProductObj = require("./db/models/product_schema");
 const CommentObj = require("./db/models/comments_schema");
 const OrderObj = require("./db/models/orders_schema");
+const PrevOrderObj = require("./db/models/prevorders_schema");
+const InvoiceObj = require("./db/models/invoices_schema");
 const MongoClient = require('mongodb').MongoClient;
 var urlToDB = "mongodb://localhost:27017";
 const mongoClient = new MongoClient(urlToDB, { useNewUrlParser: true, useUnifiedTopology: true });
@@ -16,16 +18,91 @@ const User = db.collection("Users");
 const Product = db.collection("Products");
 const Comment = db.collection("Comment");
 const Order = db.collection("Orders");
+const PrevOrder = db.collection("PrevOrders");
+const Invoice = db.collection("Invoices");
 app.use(bodyParser.json()) // for parsing application/json
 app.use(bodyParser.urlencoded({ extended: true }))
-
-
+var nodemailer = require('nodemailer');
+const PDFDocument = require('pdfkit');
+const fs = require('fs');
 
 // bu kodlar sadece bir kez runlanmalı
 //db.collection("Comment").insertOne({_id : "comment_id", seq_val: 0})
 //db.collection("Users").insertOne({_id : "user_id", seq_val: 0})
 //db.collection("Orders").insertOne({_id : "order_id", seq_val: 0})
 //db.collection("Products").insertOne({_id : "product_id", seq_val: 0})
+//db.collection("PrevOrders").insertOne({_id : "prevorder_id", seq_val: 0})
+//db.collection("Invoices").insertOne({_id : "invoices_id", seq_val: 0})
+
+var transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: 'aleynakutuk10@gmail.com',
+    pass: '13579aleyna'
+  }
+});
+  
+app.post('/createPdf', (req, res) => {
+  const {userid,email} = req.body;
+  var pdfDoc = new PDFDocument;
+  
+  Order.find({userid: userid}).toArray(function(err, orders) {
+  if (err){
+      console.log(err);
+      return res.status(404).send({msg: 'cannot find any order'});
+  } else {
+    var itemsProcessed = 0;
+    async.forEach(orders, function(ord) {
+          Product.findOne({_id: ord.productid}, function(err, prod) {
+            if (err) throw err;
+            else{
+              pdfDoc.pipe(fs.createWriteStream('User_Bill.pdf'));
+              pdfDoc.text("Your bill is as follows, please pay it :)", { align: 'center'})
+              pdfDoc.text("Productname:", 120,160)
+              pdfDoc.text("Price:", 340,160)
+              pdfDoc.text(prod.productname, 120,180)
+              pdfDoc.text(ord.quantity + "x" + prod.price + "=" + ord.quantity*prod.price , 340,180)
+              
+              console.log("Pdf created")
+
+              itemsProcessed++;
+              if(itemsProcessed === orders.length) {
+                callback();
+              }    
+            }
+          });          
+        });
+
+        function callback () { 
+          console.log('Pdf will be sent');
+          pdfDoc.end();
+
+          var mailOptionsPdf = {
+            from: 'aleynakutuk10@gmail.com',
+            to: email,
+            subject: 'Sending Email using Node.js',
+            text: 'Your bill is attached below, please check!',
+            attachments: [{
+              filename: 'User_Bill.pdf',
+              path: 'C:/Users/aleyn/CS308_ECommerce/User_Bill.pdf'
+            }]
+          };
+
+          transporter.sendMail(mailOptionsPdf, function(error, info){
+            if (error) {
+              console.log(error);
+              res.status(404).send({msg: 'Failure'});
+            } else {
+              console.log('Email sent: ' + info.response);
+              res.status(200).send({msg: 'Email is sent'});
+            }
+          });
+                   
+         }
+          
+    }
+  });
+})
 
   // increase seq val
 function getSequenceNextValue(dbname, seqName, callback) {
@@ -69,6 +146,7 @@ app.post('/createUser',(req,res)=>{
   }
   //check if password is more than 6 characters
   else if(password.length < 6 ) {
+    
     res.status(404).send({msg : 'password atleast 6 characters'})
   }
   else{
@@ -81,15 +159,18 @@ app.post('/createUser',(req,res)=>{
        } else {          
         
         getSequenceNextValue(User, "user_id", function(result) {
-
+               // random sayı üret
             const newUser = new UserObj({
+                 //random sayıyı tut
+                 //userenteredcode: true , default is false
                 _id:  result,
                 username : username,
                 email : email,
                 password : password,
-                userrole: "Customer",
+                //userrole: "SalesManager",
                 gender: gender
                 });
+                  // code u mail at 
                 User.insertOne(newUser);
                 res.status(200).send({msg: 'User created'});
              
@@ -97,6 +178,39 @@ app.post('/createUser',(req,res)=>{
         }
       })
     }
+})
+
+
+app.post('/enterCode', (req, res) => {
+  const {code,email} = req.body;
+   // user table ında maile ait kullanıcıyı bul 
+   // codeları karsılastır aynıysa userentered code true yap 
+   // response olarak user activated
+
+
+});
+
+
+//handle mailing 
+app.post('/sendMail', (req, res) => {
+  const {email} = req.body;
+
+var mailOptions = {
+  from: 'aleynakutuk10@gmail.com',
+  to: email,
+  subject: 'Sending Email using Node.js',
+  text: 'Hey, I am Aleyna'
+};
+
+transporter.sendMail(mailOptions, function(error, info){
+  if (error) {
+    console.log(error);
+    res.status(404).send({msg: 'Failure'});
+  } else {
+    console.log('Email sent: ' + info.response);
+    res.status(200).send({msg: 'Email is sent'});
+  }
+});
 })
 
 // create product database
@@ -181,7 +295,7 @@ app.post('/deleteProduct', (req, res) => {
     Comment.updateOne({_id: req.body.commentid},
       {$set: {approved: req.body.approved} }, function(error){
       if(error){
-        res.status(404).send({msg:"error"});
+        res.status(404).send({msg:"Comment status cannot be changed"});
       }
       else{
         res.status(200).send({msg:"Comment approve status has been changed succesfully"});
@@ -232,6 +346,7 @@ app.post('/addProductToBasket', (req, res) => {
               Order.insertOne(newOrder);
               res.status(200).send({msg: 'Product added to your basket'});
             });
+
           }else{
             Order.findOneAndUpdate(
               { 
@@ -245,8 +360,6 @@ app.post('/addProductToBasket', (req, res) => {
           }
       });
   })
-
-  //{name: "NIKE BAG", price: "20", rate: 4, exp: "amazing bag",type:"Clothing", comments:["nice bag", "hate it"],   id:"1"}, 
 
 
 // decreases product order from the basket quantity
@@ -302,6 +415,54 @@ app.post('/deleteBasket', (req, res) => {
 
 })
 
+app.post("/createInvoice", (req, res) => {
+  const {userid,address} = req.body;
+  var Totalcost=0;
+
+  Order.find({userid: userid}).toArray(function(err, orders) {
+  if (err){
+      console.log(err);
+      return res.status(404).send({ message: 'Failure' });
+  } else {
+    var itemsProcessed = 0;
+    async.forEach(orders, function(ord) {
+          Product.findOne({_id: ord.productid}, function(err, prod) {
+            if (err) throw err;
+            else{
+              
+              Totalcost += prod.price* ord.quantity;
+              console.log(Totalcost)
+              itemsProcessed++;
+              if(itemsProcessed === orders.length) {
+                callback();
+              }    
+              
+            }
+          });
+        });
+
+        function callback () { 
+          console.log('all done');
+          getSequenceNextValue(Invoice, "invoices_id", function(result) {
+            const newInvoice = new  InvoiceObj({
+                userid : userid,
+                _id: result,
+                 address: address,
+                 totalcost: Totalcost
+               });
+                Invoice.insertOne(newInvoice);
+                console.log('Invoice added');
+                console.log(newInvoice)
+              });
+
+          return res.status(200).send(Totalcost.toString());
+         }
+    }
+  });
+});
+
+
+
 // sends user's current basket/all orders
 app.post("/sendBasket", (req, res) => {
   const {userid} = req.body;
@@ -338,7 +499,6 @@ app.post("/sendBasket", (req, res) => {
             }
           });
          
-          
         });
 
         function callback () { 
@@ -352,23 +512,78 @@ app.post("/sendBasket", (req, res) => {
   });
 });
 
+
+// save prevorders
+app.post("/savePrevOrders", (req, res) => {
+  const {userid} = req.body;
+  
+  Order.find({userid: userid}).toArray(function(err, orders) {
+  if (err){
+      console.log(err);
+      return res.status(404).send({ message: 'Failure' });
+  } else {
+    var itemsProcessed = 0;
+    async.forEach(orders, function(ord) {
+          Product.findOne({_id: ord.productid}, function(err, prod) {
+            if (err) throw err;
+            else{
+
+              getSequenceNextValue(PrevOrder, "prevorder_id", function(result) {
+                const newPrevOrder = new PrevOrderObj({
+                    userid : userid,
+                    _id: result,
+                    quantity: ord.quantity,
+                    productname: prod.productname,
+                    productexplanation: prod.explanation,
+                    productcolor: prod.color,
+                    productcategory: prod.category,
+                    price: prod.price,
+                    orderdate: prod.orderdate
+                   });
+                    PrevOrder.insertOne(newPrevOrder);
+                    console.log('Prev order added');
+                    console.log(newPrevOrder)
+                  });
+
+              
+              itemsProcessed++;
+              if(itemsProcessed === orders.length) {
+                callback();
+              }    
+              
+            }
+          });
+         
+          
+        });
+
+        function callback () { 
+          console.log('all done');
+          return res.status(200).send({msg: 'Previous orders are saved'})
+         }
+          
+      
+    }
+  });
+});
+
 //login post handler
 app.post('/login', (req, res)=> {
-  User.findOne({_id: req.body.email},function(err,user){
+  User.findOne({email: req.body.email},function(err,user){
 
+    // code entered trueysa girsin
     if(!user){
       res.status(404).send({msg:"User does not exist"});
     }
     else{
-      User.findOne({password: req.body.password, username: req.body.username},function(err,pass){
-        if(!pass){
+
+        if(user.password !=  req.body.password || user.username != req.body.username){
           res.status(404).send({msg:"Wrong password/username"});
         }
         else{
-          res.status(200).send({msg:"Welcome"});
+          res.status(200).send({msg:"Welcome " + user.username});
         }
 
-      });
     }
 
   });
@@ -380,8 +595,8 @@ app.post('/login', (req, res)=> {
 app.post('/updateUsername', (req, res) => {
 
   User.updateOne({_id: req.body.userid},{$set: {username: req.body.username} }, function(error,user){
-    if(error){
-      res.status(404).send({msg:"error"});
+    if(!user){
+      res.status(404).send({msg:"Username cannot found"});
     }
     else{
       res.status(200).send({msg:"Username has changed succesfully"});
