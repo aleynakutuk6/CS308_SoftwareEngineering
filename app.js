@@ -25,6 +25,7 @@ app.use(bodyParser.urlencoded({ extended: true }))
 var nodemailer = require('nodemailer');
 const PDFDocument = require('pdfkit');
 const fs = require('fs');
+const { randomInt } = require('crypto');
 
 // bu kodlar sadece bir kez runlanmalı
 //db.collection("Comment").insertOne({_id : "comment_id", seq_val: 0})
@@ -160,8 +161,11 @@ app.post('/createUser',(req,res)=>{
         
         getSequenceNextValue(User, "user_id", function(result) {
                // random sayı üret
+               code = getRandomInt(1000, 5000);
+               console.log(code)
             const newUser = new UserObj({
                  //random sayıyı tut
+                 randomcode: code,
                  //userenteredcode: true , default is false
                 _id:  result,
                 username : username,
@@ -170,6 +174,25 @@ app.post('/createUser',(req,res)=>{
                 //userrole: "SalesManager",
                 gender: gender
                 });
+
+                var mailOptions = {
+                from: 'aleynakutuk10@gmail.com',
+                to: email,
+                subject: 'Sending Email using Node.js',
+                text: 'Please enter the code: ' + code
+                };
+
+                transporter.sendMail(mailOptions, function(error, info){
+                  if (error) {
+                   console.log(error);
+                   res.status(404).send({msg: 'Failure'});
+                   } else {
+                   console.log('Email sent: ' + info.response);
+                   res.status(200).send({msg: 'Email is sent'});
+                 }
+                  });
+
+
                   // code u mail at 
                 User.insertOne(newUser);
                 res.status(200).send({msg: 'User created'});
@@ -180,13 +203,37 @@ app.post('/createUser',(req,res)=>{
     }
 })
 
+function getRandomInt(min, max) {
+  min = Math.ceil(min);
+  max = Math.floor(max);
+  return Math.floor(Math.random() * (max - min) + min); //The maximum is exclusive and the minimum is inclusive
+}
 
 app.post('/enterCode', (req, res) => {
-  const {code,email} = req.body;
+
+  User.findOne({email: req.body.email}, function(err,usr) {
+    if (err) res.status(404).send({msg:"User cannot found"});
+    else{
+
+      if(usr.randomcode !=  req.body.code){
+        res.status(404).send({msg:"Code entered wrong"});
+      }
+      else {
+      User.updateOne({email: req.body.email, randomcode: req.body.code },
+        {$set: {  userenteredcode: 1} }, function(error){
+        if(error){
+          res.status(404).send({msg:"User could not activated"});
+        }
+        else{
+          res.status(200).send({msg:"User activated"});
+        }
+      });
+      }
+      }
+    });
    // user table ında maile ait kullanıcıyı bul 
    // codeları karsılastır aynıysa userentered code true yap 
    // response olarak user activated
-
 
 });
 
@@ -418,7 +465,7 @@ app.post('/deleteBasket', (req, res) => {
 app.post("/createInvoice", (req, res) => {
   const {userid,address} = req.body;
   var Totalcost=0;
-
+  var prodid=0;
   Order.find({userid: userid}).toArray(function(err, orders) {
   if (err){
       console.log(err);
@@ -429,7 +476,7 @@ app.post("/createInvoice", (req, res) => {
           Product.findOne({_id: ord.productid}, function(err, prod) {
             if (err) throw err;
             else{
-              
+              prodid=prod._id;
               Totalcost += prod.price* ord.quantity;
               console.log(Totalcost)
               itemsProcessed++;
@@ -448,6 +495,7 @@ app.post("/createInvoice", (req, res) => {
                 userid : userid,
                 _id: result,
                  address: address,
+                 productid: prodid,
                  totalcost: Totalcost
                });
                 Invoice.insertOne(newInvoice);
@@ -579,6 +627,9 @@ app.post('/login', (req, res)=> {
 
         if(user.password !=  req.body.password || user.username != req.body.username){
           res.status(404).send({msg:"Wrong password/username"});
+        }
+        else if(user.userenteredcode == 0){
+          res.status(404).send({msg:"Please first enter the code which sent to your gmail account"});
         }
         else{
           res.status(200).send({msg:"Welcome " + user.username});

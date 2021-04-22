@@ -1,10 +1,10 @@
 const { Int32 } = require('mongodb');
 const mongoose = require('mongoose');
 const UserSchema  = new mongoose.Schema({
-    _id :{
+  _id :{
         type  : Number,
         required : true
-    } ,
+  } ,
   username :{
       type  : String,
       required : true
@@ -16,6 +16,15 @@ const UserSchema  = new mongoose.Schema({
   userrole :{
     type  : String,
     default : "Customer"
+} ,
+ randomcode:{
+    type  : Number,
+    required : true
+ },
+  userenteredcode :{
+    type  : Number,
+    required : true,
+    default : 0
 } ,
   gender :{
     type  : String,

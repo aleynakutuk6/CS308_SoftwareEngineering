@@ -8,6 +8,10 @@ const InvoicesSchema  = new mongoose.Schema({
         type  : Number,
         required : true
     },
+    productid :{
+        type  : Number,
+        required : true
+    },
     address :{
     type  : String,
     required : true
